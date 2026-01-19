@@ -1,16 +1,17 @@
-import type {
-  ShortioLink,
-  ShortioCreateLink,
-  ShortioUpdateLink,
-  ShortioDomain,
-} from './types.js';
-
-const BASE_URL = 'https://api.short.io';
+import {
+  setApiKey,
+  getApiDomains,
+  getApiLinks,
+  postLinks,
+  postLinksByLinkId,
+  deleteLinksByLinkId,
+} from '@short.io/client-node';
+import type { ShortioLink, ShortioCreateLink, ShortioUpdateLink, ShortioDomain } from './types.js';
 
 export class ShortioApiError extends Error {
   constructor(
     message: string,
-    public statusCode: number,
+    public statusCode?: number,
     public response?: unknown
   ) {
     super(message);
@@ -19,50 +20,22 @@ export class ShortioApiError extends Error {
 }
 
 export class ShortioClient {
-  private apiKey: string;
   private domainCache: Map<string, number> = new Map();
 
   constructor(apiKey: string) {
-    this.apiKey = apiKey;
-  }
-
-  private async request<T>(
-    endpoint: string,
-    options: RequestInit = {}
-  ): Promise<T> {
-    const url = `${BASE_URL}${endpoint}`;
-    const response = await fetch(url, {
-      ...options,
-      headers: {
-        'Authorization': this.apiKey,
-        'Content-Type': 'application/json',
-        ...options.headers,
-      },
-    });
-
-    if (!response.ok) {
-      let errorBody: unknown;
-      try {
-        errorBody = await response.json();
-      } catch {
-        errorBody = await response.text();
-      }
-      throw new ShortioApiError(
-        `API request failed: ${response.status} ${response.statusText}`,
-        response.status,
-        errorBody
-      );
-    }
-
-    return response.json() as Promise<T>;
+    setApiKey(apiKey);
   }
 
   async getDomains(): Promise<ShortioDomain[]> {
-    const response = await this.request<ShortioDomain[]>('/api/domains');
-    for (const domain of response) {
+    const result = await getApiDomains();
+    if (result.error) {
+      throw new ShortioApiError('Failed to fetch domains', undefined, result.error);
+    }
+    const domains = result.data ?? [];
+    for (const domain of domains) {
       this.domainCache.set(domain.hostname, domain.id);
     }
-    return response;
+    return domains.map(d => ({ id: d.id, hostname: d.hostname }));
   }
 
   async getDomainId(hostname: string): Promise<number> {
@@ -72,117 +45,112 @@ export class ShortioClient {
     await this.getDomains();
     const id = this.domainCache.get(hostname);
     if (!id) {
-      throw new ShortioApiError(`Domain not found: ${hostname}`, 404);
+      throw new ShortioApiError(`Domain not found: ${hostname}`);
     }
     return id;
   }
 
   async getLinks(domain: string): Promise<ShortioLink[]> {
     const domainId = await this.getDomainId(domain);
-    const links: ShortioLink[] = [];
-    let beforeId: string | undefined;
+    const allLinks: ShortioLink[] = [];
+    let pageToken: string | undefined;
 
-    while (true) {
-      const params = new URLSearchParams({ domain_id: String(domainId), limit: '150' });
-      if (beforeId) {
-        params.set('beforeId', beforeId);
+    do {
+      const result = await getApiLinks({
+        query: {
+          domain_id: domainId,
+          limit: 150,
+          ...(pageToken ? { pageToken } : {}),
+        },
+      });
+
+      if (result.error) {
+        throw new ShortioApiError(`Failed to fetch links for domain ${domain}`, undefined, result.error);
       }
 
-      const response = await this.request<{ links: ShortioLink[] }>(
-        `/api/links?${params.toString()}`
-      );
-
-      if (response.links.length === 0) {
-        break;
-      }
-
-      for (const link of response.links) {
-        links.push({
-          id: link.id,
-          originalURL: link.originalURL,
-          path: link.path,
-          domain: domain,
-          domainId: domainId,
-          title: link.title,
-          tags: link.tags,
-        });
-      }
-
-      if (response.links.length < 150) {
-        break;
-      }
-
-      beforeId = response.links[response.links.length - 1].id;
-    }
-
-    return links;
-  }
-
-  async createLink(link: ShortioCreateLink): Promise<ShortioLink> {
-    const response = await this.request<ShortioLink>('/links', {
-      method: 'POST',
-      body: JSON.stringify({
-        originalURL: link.originalURL,
-        domain: link.domain,
-        path: link.path,
-        title: link.title,
-        tags: link.tags,
-      }),
-    });
-    return response;
-  }
-
-  async createLinksBulk(links: ShortioCreateLink[]): Promise<ShortioLink[]> {
-    if (links.length === 0) return [];
-
-    const results: ShortioLink[] = [];
-    const batchSize = 1000;
-
-    for (let i = 0; i < links.length; i += batchSize) {
-      const batch = links.slice(i, i + batchSize);
-      const response = await this.request<ShortioLink[]>('/links/bulk', {
-        method: 'POST',
-        body: JSON.stringify(
-          batch.map((link) => ({
+      const data = result.data;
+      if (data?.links) {
+        for (const link of data.links) {
+          allLinks.push({
+            id: link.idString,
             originalURL: link.originalURL,
-            domain: link.domain,
             path: link.path,
+            domain,
+            domainId,
             title: link.title,
             tags: link.tags,
-          }))
-        ),
-      });
-      results.push(...response);
-    }
+          });
+        }
+      }
 
-    return results;
+      pageToken = data?.nextPageToken;
+    } while (pageToken);
+
+    return allLinks;
   }
 
-  async updateLink(linkId: string, update: ShortioUpdateLink): Promise<ShortioLink> {
-    const response = await this.request<ShortioLink>(`/links/${linkId}`, {
-      method: 'POST',
-      body: JSON.stringify(update),
+  async createLink(params: ShortioCreateLink): Promise<ShortioLink> {
+    const result = await postLinks({
+      body: {
+        originalURL: params.originalURL,
+        domain: params.domain,
+        path: params.path,
+        title: params.title,
+        tags: params.tags,
+      },
     });
-    return response;
+
+    if (result.error) {
+      const errorMsg = 'message' in result.error ? result.error.message : 'Unknown error';
+      throw new ShortioApiError(`Failed to create link: ${errorMsg}`, undefined, result.error);
+    }
+
+    const data = result.data!;
+    return {
+      id: data.idString,
+      originalURL: data.originalURL,
+      path: data.path,
+      domain: params.domain,
+      domainId: data.DomainId ?? 0,
+      title: data.title,
+      tags: data.tags,
+    };
+  }
+
+  async updateLink(linkId: string, params: ShortioUpdateLink): Promise<ShortioLink> {
+    const result = await postLinksByLinkId({
+      path: { linkId },
+      body: {
+        originalURL: params.originalURL,
+        title: params.title,
+        tags: params.tags,
+      },
+    });
+
+    if (result.error) {
+      const errorMsg = 'message' in result.error ? result.error.message : 'Unknown error';
+      throw new ShortioApiError(`Failed to update link: ${errorMsg}`, undefined, result.error);
+    }
+
+    const data = result.data!;
+    return {
+      id: data.idString,
+      originalURL: data.originalURL,
+      path: data.path,
+      domain: '',
+      domainId: data.DomainId ?? 0,
+      title: data.title,
+      tags: data.tags,
+    };
   }
 
   async deleteLink(linkId: string): Promise<void> {
-    await this.request(`/links/${linkId}`, {
-      method: 'DELETE',
+    const result = await deleteLinksByLinkId({
+      path: { link_id: linkId },
     });
-  }
 
-  async deleteLinksBulk(linkIds: string[]): Promise<void> {
-    if (linkIds.length === 0) return;
-
-    const batchSize = 150;
-
-    for (let i = 0; i < linkIds.length; i += batchSize) {
-      const batch = linkIds.slice(i, i + batchSize);
-      await this.request('/links/delete_bulk', {
-        method: 'DELETE',
-        body: JSON.stringify({ link_ids: batch }),
-      });
+    if (result.error) {
+      throw new ShortioApiError(`Failed to delete link: ${linkId}`, undefined, result.error);
     }
   }
 }

@@ -1,52 +1,65 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { ShortioClient, ShortioApiError } from './shortio-client.js';
 
-const mockFetch = vi.fn();
-global.fetch = mockFetch;
+vi.mock('@short.io/client-node', () => ({
+  setApiKey: vi.fn(),
+  getApiDomains: vi.fn(),
+  getApiLinks: vi.fn(),
+  postLinks: vi.fn(),
+  postLinksByLinkId: vi.fn(),
+  deleteLinksByLinkId: vi.fn(),
+}));
+
+import {
+  setApiKey,
+  getApiDomains,
+  getApiLinks,
+  postLinks,
+  postLinksByLinkId,
+  deleteLinksByLinkId,
+} from '@short.io/client-node';
+
+const mockSetApiKey = vi.mocked(setApiKey);
+const mockGetApiDomains = vi.mocked(getApiDomains);
+const mockGetApiLinks = vi.mocked(getApiLinks);
+const mockPostLinks = vi.mocked(postLinks);
+const mockPostLinksByLinkId = vi.mocked(postLinksByLinkId);
+const mockDeleteLinksByLinkId = vi.mocked(deleteLinksByLinkId);
 
 describe('ShortioClient', () => {
   let client: ShortioClient;
 
   beforeEach(() => {
+    vi.clearAllMocks();
     client = new ShortioClient('test-api-key');
-    mockFetch.mockReset();
   });
 
-  afterEach(() => {
-    vi.clearAllMocks();
+  it('sets API key on construction', () => {
+    expect(mockSetApiKey).toHaveBeenCalledWith('test-api-key');
   });
 
   describe('getDomains', () => {
     it('fetches domains and caches them', async () => {
       const domains = [
-        { id: 1, hostname: 'short.io' },
-        { id: 2, hostname: 'example.link' },
+        { id: 1, hostname: 'short.io', unicodeHostname: 'short.io', state: 'configured' as const, createdAt: '', updatedAt: '', hasFavicon: false, hideReferer: false, linkType: 'random' as const, cloaking: false, hideVisitorIp: false, enableAI: false, httpsLevel: 'none' as const, httpsLinks: false, clientStorage: {}, caseSensitive: false, incrementCounter: '', robots: 'allow' as const, exportEnabled: false, isFavorite: false },
+        { id: 2, hostname: 'example.link', unicodeHostname: 'example.link', state: 'configured' as const, createdAt: '', updatedAt: '', hasFavicon: false, hideReferer: false, linkType: 'random' as const, cloaking: false, hideVisitorIp: false, enableAI: false, httpsLevel: 'none' as const, httpsLinks: false, clientStorage: {}, caseSensitive: false, incrementCounter: '', robots: 'allow' as const, exportEnabled: false, isFavorite: false },
       ];
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: () => Promise.resolve(domains),
-      });
+      mockGetApiDomains.mockResolvedValueOnce({ data: domains });
 
       const result = await client.getDomains();
 
-      expect(result).toEqual(domains);
-      expect(mockFetch).toHaveBeenCalledWith(
-        'https://api.short.io/api/domains',
-        expect.objectContaining({
-          headers: {
-            'Authorization': 'test-api-key',
-            'Content-Type': 'application/json',
-          },
-        })
-      );
+      expect(result).toEqual([
+        { id: 1, hostname: 'short.io' },
+        { id: 2, hostname: 'example.link' },
+      ]);
+      expect(mockGetApiDomains).toHaveBeenCalledTimes(1);
     });
   });
 
   describe('getDomainId', () => {
     it('returns cached domain id', async () => {
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: () => Promise.resolve([{ id: 123, hostname: 'short.io' }]),
+      mockGetApiDomains.mockResolvedValueOnce({
+        data: [{ id: 123, hostname: 'short.io', unicodeHostname: 'short.io', state: 'configured' as const, createdAt: '', updatedAt: '', hasFavicon: false, hideReferer: false, linkType: 'random' as const, cloaking: false, hideVisitorIp: false, enableAI: false, httpsLevel: 'none' as const, httpsLinks: false, clientStorage: {}, caseSensitive: false, incrementCounter: '', robots: 'allow' as const, exportEnabled: false, isFavorite: false }],
       });
 
       const id = await client.getDomainId('short.io');
@@ -55,13 +68,12 @@ describe('ShortioClient', () => {
       // Second call should use cache
       const id2 = await client.getDomainId('short.io');
       expect(id2).toBe(123);
-      expect(mockFetch).toHaveBeenCalledTimes(1);
+      expect(mockGetApiDomains).toHaveBeenCalledTimes(1);
     });
 
     it('throws error for unknown domain', async () => {
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: () => Promise.resolve([{ id: 1, hostname: 'other.io' }]),
+      mockGetApiDomains.mockResolvedValueOnce({
+        data: [{ id: 1, hostname: 'other.io', unicodeHostname: 'other.io', state: 'configured' as const, createdAt: '', updatedAt: '', hasFavicon: false, hideReferer: false, linkType: 'random' as const, cloaking: false, hideVisitorIp: false, enableAI: false, httpsLevel: 'none' as const, httpsLinks: false, clientStorage: {}, caseSensitive: false, incrementCounter: '', robots: 'allow' as const, exportEnabled: false, isFavorite: false }],
       });
 
       await expect(client.getDomainId('unknown.io')).rejects.toThrow('Domain not found');
@@ -70,19 +82,17 @@ describe('ShortioClient', () => {
 
   describe('getLinks', () => {
     it('fetches links for domain', async () => {
-      mockFetch
-        .mockResolvedValueOnce({
-          ok: true,
-          json: () => Promise.resolve([{ id: 1, hostname: 'short.io' }]),
-        })
-        .mockResolvedValueOnce({
-          ok: true,
-          json: () => Promise.resolve({
-            links: [
-              { id: 'link1', originalURL: 'https://example.com', path: 'test', title: 'Test', tags: ['tag1'] },
-            ],
-          }),
-        });
+      mockGetApiDomains.mockResolvedValueOnce({
+        data: [{ id: 1, hostname: 'short.io', unicodeHostname: 'short.io', state: 'configured' as const, createdAt: '', updatedAt: '', hasFavicon: false, hideReferer: false, linkType: 'random' as const, cloaking: false, hideVisitorIp: false, enableAI: false, httpsLevel: 'none' as const, httpsLinks: false, clientStorage: {}, caseSensitive: false, incrementCounter: '', robots: 'allow' as const, exportEnabled: false, isFavorite: false }],
+      });
+      mockGetApiLinks.mockResolvedValueOnce({
+        data: {
+          count: 1,
+          links: [
+            { idString: 'link1', id: 'link1', originalURL: 'https://example.com', path: 'test', title: 'Test', tags: ['tag1'], shortURL: '', secureShortURL: '' },
+          ],
+        },
+      });
 
       const links = await client.getLinks('short.io');
 
@@ -99,28 +109,31 @@ describe('ShortioClient', () => {
     });
 
     it('handles pagination', async () => {
-      mockFetch
+      mockGetApiDomains.mockResolvedValueOnce({
+        data: [{ id: 1, hostname: 'short.io', unicodeHostname: 'short.io', state: 'configured' as const, createdAt: '', updatedAt: '', hasFavicon: false, hideReferer: false, linkType: 'random' as const, cloaking: false, hideVisitorIp: false, enableAI: false, httpsLevel: 'none' as const, httpsLinks: false, clientStorage: {}, caseSensitive: false, incrementCounter: '', robots: 'allow' as const, exportEnabled: false, isFavorite: false }],
+      });
+      mockGetApiLinks
         .mockResolvedValueOnce({
-          ok: true,
-          json: () => Promise.resolve([{ id: 1, hostname: 'short.io' }]),
-        })
-        .mockResolvedValueOnce({
-          ok: true,
-          json: () => Promise.resolve({
+          data: {
+            count: 151,
             links: Array(150).fill(null).map((_, i) => ({
+              idString: `link${i}`,
               id: `link${i}`,
               originalURL: `https://example${i}.com`,
               path: `path${i}`,
+              shortURL: '',
+              secureShortURL: '',
             })),
-          }),
+            nextPageToken: 'token123',
+          },
         })
         .mockResolvedValueOnce({
-          ok: true,
-          json: () => Promise.resolve({
+          data: {
+            count: 151,
             links: [
-              { id: 'link150', originalURL: 'https://example150.com', path: 'path150' },
+              { idString: 'link150', id: 'link150', originalURL: 'https://example150.com', path: 'path150', shortURL: '', secureShortURL: '' },
             ],
-          }),
+          },
         });
 
       const links = await client.getLinks('short.io');
@@ -131,15 +144,15 @@ describe('ShortioClient', () => {
   describe('createLink', () => {
     it('creates a link', async () => {
       const createdLink = {
+        idString: 'new-link',
         id: 'new-link',
         originalURL: 'https://example.com',
         path: 'my-path',
-        domain: 'short.io',
+        shortURL: '',
+        secureShortURL: '',
+        DomainId: 1,
       };
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: () => Promise.resolve(createdLink),
-      });
+      mockPostLinks.mockResolvedValueOnce({ data: createdLink });
 
       const result = await client.createLink({
         originalURL: 'https://example.com',
@@ -149,28 +162,32 @@ describe('ShortioClient', () => {
         tags: ['tag1'],
       });
 
-      expect(result).toEqual(createdLink);
-      expect(mockFetch).toHaveBeenCalledWith(
-        'https://api.short.io/links',
-        expect.objectContaining({
-          method: 'POST',
-          body: JSON.stringify({
-            originalURL: 'https://example.com',
-            domain: 'short.io',
-            path: 'my-path',
-            title: 'My Title',
-            tags: ['tag1'],
-          }),
-        })
-      );
+      expect(result.id).toBe('new-link');
+      expect(mockPostLinks).toHaveBeenCalledWith({
+        body: {
+          originalURL: 'https://example.com',
+          domain: 'short.io',
+          path: 'my-path',
+          title: 'My Title',
+          tags: ['tag1'],
+        },
+      });
     });
   });
 
   describe('updateLink', () => {
     it('updates a link', async () => {
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: () => Promise.resolve({ id: '1' }),
+      mockPostLinksByLinkId.mockResolvedValueOnce({
+        data: {
+          idString: '1',
+          id: '1',
+          originalURL: 'https://new-url.com',
+          path: 'test',
+          title: 'New Title',
+          tags: ['new-tag'],
+          shortURL: '',
+          secureShortURL: '',
+        },
       });
 
       await client.updateLink('1', {
@@ -179,23 +196,28 @@ describe('ShortioClient', () => {
         tags: ['new-tag'],
       });
 
-      expect(mockFetch).toHaveBeenCalledWith(
-        'https://api.short.io/links/1',
-        expect.objectContaining({
-          method: 'POST',
-          body: JSON.stringify({
-            originalURL: 'https://new-url.com',
-            title: 'New Title',
-            tags: ['new-tag'],
-          }),
-        })
-      );
+      expect(mockPostLinksByLinkId).toHaveBeenCalledWith({
+        path: { linkId: '1' },
+        body: {
+          originalURL: 'https://new-url.com',
+          title: 'New Title',
+          tags: ['new-tag'],
+        },
+      });
     });
 
     it('sends empty values to clear title/tags', async () => {
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: () => Promise.resolve({ id: '1' }),
+      mockPostLinksByLinkId.mockResolvedValueOnce({
+        data: {
+          idString: '1',
+          id: '1',
+          originalURL: 'https://example.com',
+          path: 'test',
+          title: '',
+          tags: [],
+          shortURL: '',
+          secureShortURL: '',
+        },
       });
 
       await client.updateLink('1', {
@@ -204,58 +226,48 @@ describe('ShortioClient', () => {
         tags: [],
       });
 
-      const callBody = JSON.parse(mockFetch.mock.calls[0][1].body);
-      expect(callBody.title).toBe('');
-      expect(callBody.tags).toEqual([]);
+      expect(mockPostLinksByLinkId).toHaveBeenCalledWith({
+        path: { linkId: '1' },
+        body: {
+          originalURL: 'https://example.com',
+          title: '',
+          tags: [],
+        },
+      });
     });
   });
 
   describe('deleteLink', () => {
     it('deletes a link', async () => {
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: () => Promise.resolve({}),
-      });
+      mockDeleteLinksByLinkId.mockResolvedValueOnce({ data: { success: true } });
 
       await client.deleteLink('1');
 
-      expect(mockFetch).toHaveBeenCalledWith(
-        'https://api.short.io/links/1',
-        expect.objectContaining({
-          method: 'DELETE',
-        })
-      );
+      expect(mockDeleteLinksByLinkId).toHaveBeenCalledWith({
+        path: { link_id: '1' },
+      });
     });
   });
 
   describe('error handling', () => {
-    it('throws ShortioApiError on non-ok response', async () => {
-      mockFetch.mockResolvedValueOnce({
-        ok: false,
-        status: 404,
-        statusText: 'Not Found',
-        json: () => Promise.resolve({ error: 'Not found' }),
-      });
-
-      try {
-        await client.getDomains();
-        expect.fail('Should have thrown');
-      } catch (error) {
-        expect(error).toBeInstanceOf(ShortioApiError);
-        expect((error as ShortioApiError).statusCode).toBe(404);
-      }
-    });
-
-    it('handles text error responses', async () => {
-      mockFetch.mockResolvedValueOnce({
-        ok: false,
-        status: 500,
-        statusText: 'Internal Server Error',
-        json: () => Promise.reject(new Error('Not JSON')),
-        text: () => Promise.resolve('Internal error'),
+    it('throws ShortioApiError on API error', async () => {
+      mockGetApiDomains.mockResolvedValueOnce({
+        error: { error: 'Unauthorized' },
       });
 
       await expect(client.getDomains()).rejects.toThrow(ShortioApiError);
+    });
+
+    it('throws ShortioApiError on createLink error', async () => {
+      mockPostLinks.mockResolvedValueOnce({
+        error: { message: 'Link already exists', statusCode: 409 },
+      });
+
+      await expect(client.createLink({
+        originalURL: 'https://example.com',
+        domain: 'short.io',
+        path: 'existing',
+      })).rejects.toThrow('Failed to create link: Link already exists');
     });
   });
 });
