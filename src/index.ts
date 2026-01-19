@@ -18,7 +18,7 @@ async function run(): Promise<void> {
     }
 
     const config = parseConfig(resolvedPath);
-    core.info(`Found ${config.links.length} links in config`);
+    core.info(`Found ${Object.keys(config.links).length} links in config`);
 
     const client = new ShortioClient(apiKey);
 

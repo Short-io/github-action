@@ -7,7 +7,7 @@ import type {
   LinkDiff,
   SyncResult,
 } from './types.js';
-import { getLinkKey } from './types.js';
+import { getLinkKey, getLinksArray } from './types.js';
 import { getUniqueDomains } from './config.js';
 
 function arraysEqual(a?: string[], b?: string[]): boolean {
@@ -47,7 +47,7 @@ export async function computeDiff(
   }
 
   const yamlByKey = new Map<string, YamlLink>();
-  for (const link of config.links) {
+  for (const link of getLinksArray(config)) {
     const key = getLinkKey(link.domain, link.slug);
     yamlByKey.set(key, link);
   }
@@ -133,8 +133,8 @@ export async function executeSync(
         try {
           await client.updateLink(existing.id, {
             originalURL: yaml.url,
-            title: yaml.title,
-            tags: yaml.tags,
+            title: yaml.title ?? '',
+            tags: yaml.tags ?? [],
           });
           core.info(`Updated: ${key}`);
           result.updated++;

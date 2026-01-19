@@ -1,6 +1,7 @@
 import * as fs from 'fs';
 import { parse } from 'yaml';
-import type { YamlConfig, YamlLink } from './types.js';
+import type { YamlConfig, YamlLinkValue } from './types.js';
+import { getLinksArray } from './types.js';
 
 export class ConfigError extends Error {
   constructor(message: string) {
@@ -29,60 +30,60 @@ function validateConfig(config: unknown): asserts config is YamlConfig {
 
   const obj = config as Record<string, unknown>;
 
-  if (!Array.isArray(obj.links)) {
-    throw new ConfigError('Config must have a "links" array');
+  if (!obj.links || typeof obj.links !== 'object' || Array.isArray(obj.links)) {
+    throw new ConfigError('Config must have a "links" map (use slug as key)');
   }
 
+  const linksMap = obj.links as Record<string, unknown>;
   const seen = new Set<string>();
 
-  for (let i = 0; i < obj.links.length; i++) {
-    const link = obj.links[i];
-    validateLink(link, i);
+  for (const [slug, link] of Object.entries(linksMap)) {
+    if (!slug || slug.trim() === '') {
+      throw new ConfigError('Link slug (key) must be a non-empty string');
+    }
+    validateLink(link, slug);
 
-    const key = `${link.domain}/${link.slug}`;
+    const validatedLink = link as YamlLinkValue;
+    const key = `${validatedLink.domain}/${slug}`;
     if (seen.has(key)) {
-      throw new ConfigError(`Duplicate link at index ${i}: ${key}`);
+      throw new ConfigError(`Duplicate link: ${key}`);
     }
     seen.add(key);
   }
 }
 
-function validateLink(link: unknown, index: number): asserts link is YamlLink {
+function validateLink(link: unknown, slug: string): asserts link is YamlLinkValue {
   if (!link || typeof link !== 'object') {
-    throw new ConfigError(`Link at index ${index} must be an object`);
+    throw new ConfigError(`Link "${slug}" must be an object`);
   }
 
   const obj = link as Record<string, unknown>;
 
-  if (typeof obj.slug !== 'string' || obj.slug.trim() === '') {
-    throw new ConfigError(`Link at index ${index} must have a non-empty "slug" string`);
-  }
-
   if (typeof obj.url !== 'string' || obj.url.trim() === '') {
-    throw new ConfigError(`Link at index ${index} must have a non-empty "url" string`);
+    throw new ConfigError(`Link "${slug}" must have a non-empty "url" string`);
   }
 
   if (typeof obj.domain !== 'string' || obj.domain.trim() === '') {
-    throw new ConfigError(`Link at index ${index} must have a non-empty "domain" string`);
+    throw new ConfigError(`Link "${slug}" must have a non-empty "domain" string`);
   }
 
   try {
     new URL(obj.url);
   } catch {
-    throw new ConfigError(`Link at index ${index} has invalid URL: ${obj.url}`);
+    throw new ConfigError(`Link "${slug}" has invalid URL: ${obj.url}`);
   }
 
   if (obj.title !== undefined && typeof obj.title !== 'string') {
-    throw new ConfigError(`Link at index ${index} "title" must be a string`);
+    throw new ConfigError(`Link "${slug}" "title" must be a string`);
   }
 
   if (obj.tags !== undefined) {
     if (!Array.isArray(obj.tags)) {
-      throw new ConfigError(`Link at index ${index} "tags" must be an array`);
+      throw new ConfigError(`Link "${slug}" "tags" must be an array`);
     }
     for (const tag of obj.tags) {
       if (typeof tag !== 'string') {
-        throw new ConfigError(`Link at index ${index} tags must all be strings`);
+        throw new ConfigError(`Link "${slug}" tags must all be strings`);
       }
     }
   }
@@ -90,7 +91,7 @@ function validateLink(link: unknown, index: number): asserts link is YamlLink {
 
 export function getUniqueDomains(config: YamlConfig): string[] {
   const domains = new Set<string>();
-  for (const link of config.links) {
+  for (const link of Object.values(config.links)) {
     domains.add(link.domain);
   }
   return Array.from(domains);
