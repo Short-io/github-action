@@ -27287,6 +27287,7 @@ var fs = __toESM(require("fs"));
 var import_yaml = __toESM(require_dist());
 
 // src/types.ts
+var MANAGED_TAG = "github-action-managed";
 function getLinkKey(domain, slug) {
   return `${domain}/${slug}`;
 }
@@ -28061,7 +28062,9 @@ async function computeDiff(config, client2) {
   }
   for (const [key, existing] of existingByKey) {
     if (!yamlByKey.has(key)) {
-      toDelete.push(existing);
+      if (existing.tags?.includes(MANAGED_TAG)) {
+        toDelete.push(existing);
+      }
     }
   }
   return { toCreate, toUpdate, toDelete };
@@ -28082,12 +28085,13 @@ async function executeSync(diff, client2, dryRun) {
         result.created++;
       } else {
         try {
+          const tags = link.tags ? [...link.tags, MANAGED_TAG] : [MANAGED_TAG];
           await client2.createLink({
             originalURL: link.url,
             domain: link.domain,
             path: link.slug,
             title: link.title,
-            tags: link.tags
+            tags
           });
           core.info(`Created: ${key}`);
           result.created++;
@@ -28117,10 +28121,12 @@ async function executeSync(diff, client2, dryRun) {
         result.updated++;
       } else {
         try {
+          const baseTags = yaml.tags ?? [];
+          const tags = baseTags.includes(MANAGED_TAG) ? baseTags : [...baseTags, MANAGED_TAG];
           await client2.updateLink(existing.id, {
             originalURL: yaml.url,
             title: yaml.title ?? "",
-            tags: yaml.tags ?? []
+            tags
           });
           core.info(`Updated: ${key}`);
           result.updated++;

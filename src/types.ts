@@ -64,6 +64,8 @@ export interface LinkDiff {
   toDelete: ShortioLink[];
 }
 
+export const MANAGED_TAG = 'github-action-managed';
+
 export type LinkKey = string;
 
 export function getLinkKey(domain: string, slug: string): LinkKey {

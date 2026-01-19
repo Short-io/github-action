@@ -7,7 +7,7 @@ import type {
   LinkDiff,
   SyncResult,
 } from './types.js';
-import { getLinkKey, getLinksArray } from './types.js';
+import { getLinkKey, getLinksArray, MANAGED_TAG } from './types.js';
 import { getUniqueDomains } from './config.js';
 
 function arraysEqual(a?: string[], b?: string[]): boolean {
@@ -67,7 +67,10 @@ export async function computeDiff(
 
   for (const [key, existing] of existingByKey) {
     if (!yamlByKey.has(key)) {
-      toDelete.push(existing);
+      // Only delete links that were previously managed by this action
+      if (existing.tags?.includes(MANAGED_TAG)) {
+        toDelete.push(existing);
+      }
     }
   }
 
@@ -95,12 +98,13 @@ export async function executeSync(
         result.created++;
       } else {
         try {
+          const tags = link.tags ? [...link.tags, MANAGED_TAG] : [MANAGED_TAG];
           await client.createLink({
             originalURL: link.url,
             domain: link.domain,
             path: link.slug,
             title: link.title,
-            tags: link.tags,
+            tags,
           });
           core.info(`Created: ${key}`);
           result.created++;
@@ -131,10 +135,12 @@ export async function executeSync(
         result.updated++;
       } else {
         try {
+          const baseTags = yaml.tags ?? [];
+          const tags = baseTags.includes(MANAGED_TAG) ? baseTags : [...baseTags, MANAGED_TAG];
           await client.updateLink(existing.id, {
             originalURL: yaml.url,
             title: yaml.title ?? '',
-            tags: yaml.tags ?? [],
+            tags,
           });
           core.info(`Updated: ${key}`);
           result.updated++;

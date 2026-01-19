@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { computeDiff, executeSync, formatSummary } from './sync.js';
 import type { YamlConfig, ShortioLink, LinkDiff } from './types.js';
+import { MANAGED_TAG } from './types.js';
 import type { ShortioClient } from './shortio-client.js';
 
 vi.mock('@actions/core', () => ({
@@ -37,19 +38,21 @@ describe('computeDiff', () => {
     expect(diff.toDelete).toHaveLength(0);
   });
 
-  it('identifies links to delete', async () => {
+  it('identifies links to delete only if managed', async () => {
     const config = makeConfig('short.io', {
       'keep-link': { url: 'https://keep.com' },
     });
     const existingLinks: ShortioLink[] = [
       { id: '1', originalURL: 'https://keep.com', path: 'keep-link', domain: 'short.io', domainId: 1 },
-      { id: '2', originalURL: 'https://old.com', path: 'old-link', domain: 'short.io', domainId: 1 },
+      { id: '2', originalURL: 'https://old.com', path: 'old-link', domain: 'short.io', domainId: 1, tags: [MANAGED_TAG] },
+      { id: '3', originalURL: 'https://unmanaged.com', path: 'unmanaged-link', domain: 'short.io', domainId: 1 },
     ];
     const client = createMockClient(existingLinks);
     const diff = await computeDiff(config, client);
 
     expect(diff.toCreate).toHaveLength(0);
     expect(diff.toUpdate).toHaveLength(0);
+    // Only the managed link should be deleted, unmanaged link is ignored
     expect(diff.toDelete).toHaveLength(1);
     expect(diff.toDelete[0].path).toBe('old-link');
   });
@@ -188,7 +191,7 @@ describe('executeSync', () => {
     vi.clearAllMocks();
   });
 
-  it('creates links', async () => {
+  it('creates links with managed tag', async () => {
     const diff: LinkDiff = {
       toCreate: [{ slug: 'new-link', url: 'https://example.com', domain: 'short.io' }],
       toUpdate: [],
@@ -202,12 +205,12 @@ describe('executeSync', () => {
       domain: 'short.io',
       path: 'new-link',
       title: undefined,
-      tags: undefined,
+      tags: [MANAGED_TAG],
     });
     expect(result.created).toBe(1);
   });
 
-  it('updates links with explicit empty values for removed title/tags', async () => {
+  it('updates links adding managed tag when title/tags removed', async () => {
     const diff: LinkDiff = {
       toCreate: [],
       toUpdate: [{
@@ -222,12 +225,12 @@ describe('executeSync', () => {
     expect(client.updateLink).toHaveBeenCalledWith('1', {
       originalURL: 'https://example.com',
       title: '',
-      tags: [],
+      tags: [MANAGED_TAG],
     });
     expect(result.updated).toBe(1);
   });
 
-  it('updates links preserving title/tags when provided', async () => {
+  it('updates links preserving title/tags and adding managed tag', async () => {
     const diff: LinkDiff = {
       toCreate: [],
       toUpdate: [{
@@ -242,7 +245,7 @@ describe('executeSync', () => {
     expect(client.updateLink).toHaveBeenCalledWith('1', {
       originalURL: 'https://example.com',
       title: 'New Title',
-      tags: ['new'],
+      tags: ['new', MANAGED_TAG],
     });
     expect(result.updated).toBe(1);
   });
