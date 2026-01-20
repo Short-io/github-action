@@ -4,11 +4,44 @@ import type {
   YamlConfig,
   YamlLink,
   ShortioLink,
+  ShortioCreateLink,
+  ShortioUpdateLink,
   LinkDiff,
   SyncResult,
 } from './types.js';
 import { getLinkKey, getLinksArray, MANAGED_TAG } from './types.js';
 import { getUniqueDomains } from './config.js';
+
+/** Extract optional link parameters from a YamlLink */
+function getLinkParams(link: YamlLink): Omit<ShortioCreateLink, 'originalURL' | 'domain' | 'path'> {
+  return {
+    title: link.title,
+    tags: link.tags,
+    cloaking: link.cloaking,
+    redirectType: link.redirectType,
+    expiresAt: link.expiresAt,
+    expiredURL: link.expiredURL,
+    password: link.password,
+    passwordContact: link.passwordContact,
+    utmSource: link.utmSource,
+    utmMedium: link.utmMedium,
+    utmCampaign: link.utmCampaign,
+    utmTerm: link.utmTerm,
+    utmContent: link.utmContent,
+    androidURL: link.androidURL,
+    iphoneURL: link.iphoneURL,
+    clicksLimit: link.clicksLimit,
+    splitURL: link.splitURL,
+    splitPercent: link.splitPercent,
+    integrationGA: link.integrationGA,
+    integrationFB: link.integrationFB,
+    integrationAdroll: link.integrationAdroll,
+    integrationGTM: link.integrationGTM,
+    folderId: link.folderId,
+    archived: link.archived,
+    skipQS: link.skipQS,
+  };
+}
 
 function arraysEqual(a?: string[], b?: string[]): boolean {
   if (!a && !b) return true;
@@ -20,9 +53,42 @@ function arraysEqual(a?: string[], b?: string[]): boolean {
 }
 
 function needsUpdate(yaml: YamlLink, existing: ShortioLink): boolean {
+  // Core fields
   if (yaml.url !== existing.originalURL) return true;
   if ((yaml.title || '') !== (existing.title || '')) return true;
   if (!arraysEqual(yaml.tags, existing.tags)) return true;
+  // Redirect settings
+  if (yaml.cloaking !== existing.cloaking) return true;
+  if (yaml.redirectType !== existing.redirectType) return true;
+  // Expiration
+  if (yaml.expiresAt !== existing.expiresAt) return true;
+  if (yaml.expiredURL !== existing.expiredURL) return true;
+  // Password protection
+  if (yaml.password !== existing.password) return true;
+  if (yaml.passwordContact !== existing.passwordContact) return true;
+  // UTM parameters
+  if (yaml.utmSource !== existing.utmSource) return true;
+  if (yaml.utmMedium !== existing.utmMedium) return true;
+  if (yaml.utmCampaign !== existing.utmCampaign) return true;
+  if (yaml.utmTerm !== existing.utmTerm) return true;
+  if (yaml.utmContent !== existing.utmContent) return true;
+  // Platform-specific URLs
+  if (yaml.androidURL !== existing.androidURL) return true;
+  if (yaml.iphoneURL !== existing.iphoneURL) return true;
+  // Limits
+  if (yaml.clicksLimit !== existing.clicksLimit) return true;
+  // A/B testing
+  if (yaml.splitURL !== existing.splitURL) return true;
+  if (yaml.splitPercent !== existing.splitPercent) return true;
+  // Integrations
+  if (yaml.integrationGA !== existing.integrationGA) return true;
+  if (yaml.integrationFB !== existing.integrationFB) return true;
+  if (yaml.integrationAdroll !== existing.integrationAdroll) return true;
+  if (yaml.integrationGTM !== existing.integrationGTM) return true;
+  // Other
+  if (yaml.folderId !== existing.folderId) return true;
+  if (yaml.archived !== existing.archived) return true;
+  if (yaml.skipQS !== existing.skipQS) return true;
   return false;
 }
 
@@ -98,12 +164,13 @@ export async function executeSync(
         result.created++;
       } else {
         try {
-          const tags = link.tags ? [...link.tags, MANAGED_TAG] : [MANAGED_TAG];
+          const params = getLinkParams(link);
+          const tags = params.tags ? [...params.tags, MANAGED_TAG] : [MANAGED_TAG];
           await client.createLink({
+            ...params,
             originalURL: link.url,
             domain: link.domain,
             path: link.slug,
-            title: link.title,
             tags,
           });
           core.info(`Created: ${key}`);
@@ -135,11 +202,12 @@ export async function executeSync(
         result.updated++;
       } else {
         try {
-          const baseTags = yaml.tags ?? [];
+          const params = getLinkParams(yaml);
+          const baseTags = params.tags ?? [];
           const tags = baseTags.includes(MANAGED_TAG) ? baseTags : [...baseTags, MANAGED_TAG];
           await client.updateLink(existing.id, {
+            ...params,
             originalURL: yaml.url,
-            title: yaml.title ?? '',
             tags,
           });
           core.info(`Updated: ${key}`);

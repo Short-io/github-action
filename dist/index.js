@@ -27296,11 +27296,9 @@ function getLinksArray(config) {
   for (const doc of config.documents) {
     for (const [slug, value] of Object.entries(doc.links)) {
       links.push({
+        ...value,
         slug,
-        url: value.url,
-        domain: doc.domain,
-        title: value.title,
-        tags: value.tags
+        domain: doc.domain
       });
     }
   }
@@ -27947,7 +27945,30 @@ var ShortioClient = class {
             domain,
             domainId,
             title: link.title,
-            tags: link.tags
+            tags: link.tags,
+            cloaking: link.cloaking,
+            redirectType: link.redirectType ? Number(link.redirectType) : void 0,
+            expiresAt: link.expiresAt,
+            expiredURL: link.expiredURL,
+            password: link.password,
+            passwordContact: link.passwordContact,
+            utmSource: link.utmSource,
+            utmMedium: link.utmMedium,
+            utmCampaign: link.utmCampaign,
+            utmTerm: link.utmTerm,
+            utmContent: link.utmContent,
+            androidURL: link.androidURL,
+            iphoneURL: link.iphoneURL,
+            clicksLimit: link.clicksLimit,
+            splitURL: link.splitURL,
+            splitPercent: link.splitPercent,
+            integrationGA: link.integrationGA,
+            integrationFB: link.integrationFB,
+            integrationAdroll: link.integrationAdroll,
+            integrationGTM: link.integrationGTM,
+            folderId: link.FolderId,
+            archived: link.archived,
+            skipQS: link.skipQS
           });
         }
       }
@@ -27956,13 +27977,11 @@ var ShortioClient = class {
     return allLinks;
   }
   async createLink(params) {
+    const { folderId, ...rest } = params;
     const result = await postLinks({
       body: {
-        originalURL: params.originalURL,
-        domain: params.domain,
-        path: params.path,
-        title: params.title,
-        tags: params.tags
+        ...rest,
+        ...folderId ? { FolderId: folderId } : {}
       }
     });
     if (result.error) {
@@ -27981,12 +28000,12 @@ var ShortioClient = class {
     };
   }
   async updateLink(linkId, params) {
+    const { folderId, ...rest } = params;
     const result = await postLinksByLinkId({
       path: { linkId },
       body: {
-        originalURL: params.originalURL,
-        title: params.title,
-        tags: params.tags
+        ...rest,
+        ...folderId ? { FolderId: folderId } : {}
       }
     });
     if (result.error) {
@@ -28016,6 +28035,35 @@ var ShortioClient = class {
 
 // src/sync.ts
 var core = __toESM(require_core());
+function getLinkParams(link) {
+  return {
+    title: link.title,
+    tags: link.tags,
+    cloaking: link.cloaking,
+    redirectType: link.redirectType,
+    expiresAt: link.expiresAt,
+    expiredURL: link.expiredURL,
+    password: link.password,
+    passwordContact: link.passwordContact,
+    utmSource: link.utmSource,
+    utmMedium: link.utmMedium,
+    utmCampaign: link.utmCampaign,
+    utmTerm: link.utmTerm,
+    utmContent: link.utmContent,
+    androidURL: link.androidURL,
+    iphoneURL: link.iphoneURL,
+    clicksLimit: link.clicksLimit,
+    splitURL: link.splitURL,
+    splitPercent: link.splitPercent,
+    integrationGA: link.integrationGA,
+    integrationFB: link.integrationFB,
+    integrationAdroll: link.integrationAdroll,
+    integrationGTM: link.integrationGTM,
+    folderId: link.folderId,
+    archived: link.archived,
+    skipQS: link.skipQS
+  };
+}
 function arraysEqual(a, b) {
   if (!a && !b) return true;
   if (!a || !b) return false;
@@ -28028,6 +28076,29 @@ function needsUpdate(yaml, existing) {
   if (yaml.url !== existing.originalURL) return true;
   if ((yaml.title || "") !== (existing.title || "")) return true;
   if (!arraysEqual(yaml.tags, existing.tags)) return true;
+  if (yaml.cloaking !== existing.cloaking) return true;
+  if (yaml.redirectType !== existing.redirectType) return true;
+  if (yaml.expiresAt !== existing.expiresAt) return true;
+  if (yaml.expiredURL !== existing.expiredURL) return true;
+  if (yaml.password !== existing.password) return true;
+  if (yaml.passwordContact !== existing.passwordContact) return true;
+  if (yaml.utmSource !== existing.utmSource) return true;
+  if (yaml.utmMedium !== existing.utmMedium) return true;
+  if (yaml.utmCampaign !== existing.utmCampaign) return true;
+  if (yaml.utmTerm !== existing.utmTerm) return true;
+  if (yaml.utmContent !== existing.utmContent) return true;
+  if (yaml.androidURL !== existing.androidURL) return true;
+  if (yaml.iphoneURL !== existing.iphoneURL) return true;
+  if (yaml.clicksLimit !== existing.clicksLimit) return true;
+  if (yaml.splitURL !== existing.splitURL) return true;
+  if (yaml.splitPercent !== existing.splitPercent) return true;
+  if (yaml.integrationGA !== existing.integrationGA) return true;
+  if (yaml.integrationFB !== existing.integrationFB) return true;
+  if (yaml.integrationAdroll !== existing.integrationAdroll) return true;
+  if (yaml.integrationGTM !== existing.integrationGTM) return true;
+  if (yaml.folderId !== existing.folderId) return true;
+  if (yaml.archived !== existing.archived) return true;
+  if (yaml.skipQS !== existing.skipQS) return true;
   return false;
 }
 async function computeDiff(config, client2) {
@@ -28085,12 +28156,13 @@ async function executeSync(diff, client2, dryRun) {
         result.created++;
       } else {
         try {
-          const tags = link.tags ? [...link.tags, MANAGED_TAG] : [MANAGED_TAG];
+          const params = getLinkParams(link);
+          const tags = params.tags ? [...params.tags, MANAGED_TAG] : [MANAGED_TAG];
           await client2.createLink({
+            ...params,
             originalURL: link.url,
             domain: link.domain,
             path: link.slug,
-            title: link.title,
             tags
           });
           core.info(`Created: ${key}`);
@@ -28121,11 +28193,12 @@ async function executeSync(diff, client2, dryRun) {
         result.updated++;
       } else {
         try {
-          const baseTags = yaml.tags ?? [];
+          const params = getLinkParams(yaml);
+          const baseTags = params.tags ?? [];
           const tags = baseTags.includes(MANAGED_TAG) ? baseTags : [...baseTags, MANAGED_TAG];
           await client2.updateLink(existing.id, {
+            ...params,
             originalURL: yaml.url,
-            title: yaml.title ?? "",
             tags
           });
           core.info(`Updated: ${key}`);

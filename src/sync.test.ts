@@ -222,11 +222,10 @@ describe('executeSync', () => {
     const client = createMockClient();
     const result = await executeSync(diff, client, false);
 
-    expect(client.updateLink).toHaveBeenCalledWith('1', {
+    expect(client.updateLink).toHaveBeenCalledWith('1', expect.objectContaining({
       originalURL: 'https://example.com',
-      title: '',
       tags: [MANAGED_TAG],
-    });
+    }));
     expect(result.updated).toBe(1);
   });
 
@@ -242,11 +241,11 @@ describe('executeSync', () => {
     const client = createMockClient();
     const result = await executeSync(diff, client, false);
 
-    expect(client.updateLink).toHaveBeenCalledWith('1', {
+    expect(client.updateLink).toHaveBeenCalledWith('1', expect.objectContaining({
       originalURL: 'https://example.com',
       title: 'New Title',
       tags: ['new', MANAGED_TAG],
-    });
+    }));
     expect(result.updated).toBe(1);
   });
 

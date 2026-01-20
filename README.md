@@ -118,6 +118,29 @@ The config file supports YAML streams (multiple documents separated by `---`). E
 | `url` | string | Yes | Destination URL |
 | `title` | string | No | Link title for organization |
 | `tags` | string[] | No | Tags for categorization |
+| `cloaking` | boolean | No | Enable URL cloaking (masks destination URL) |
+| `redirectType` | 301/302/307/308 | No | HTTP redirect status code |
+| `expiresAt` | number/string | No | Link expiration (timestamp ms or ISO date) |
+| `expiredURL` | string | No | Redirect destination after link expires |
+| `password` | string | No | Password protect the link |
+| `passwordContact` | boolean | No | Show contact option for password requests |
+| `utmSource` | string | No | UTM source parameter |
+| `utmMedium` | string | No | UTM medium parameter |
+| `utmCampaign` | string | No | UTM campaign parameter |
+| `utmTerm` | string | No | UTM term parameter |
+| `utmContent` | string | No | UTM content parameter |
+| `androidURL` | string | No | Android-specific destination URL |
+| `iphoneURL` | string | No | iOS-specific destination URL |
+| `clicksLimit` | number | No | Disable link after N clicks |
+| `splitURL` | string | No | A/B test destination URL |
+| `splitPercent` | 1-100 | No | Percentage of traffic to splitURL |
+| `integrationGA` | string | No | Google Analytics integration ID |
+| `integrationFB` | string | No | Facebook Pixel integration ID |
+| `integrationAdroll` | string | No | AdRoll integration ID |
+| `integrationGTM` | string | No | Google Tag Manager integration ID |
+| `folderId` | string | No | Short.io folder ID for organization |
+| `archived` | boolean | No | Archive the link |
+| `skipQS` | boolean | No | Skip query string forwarding |
 
 ### Special Path Patterns
 
@@ -194,6 +217,49 @@ Access the sync results in subsequent steps:
     echo "Created: ${{ steps.sync.outputs.created }}"
     echo "Updated: ${{ steps.sync.outputs.updated }}"
     echo "Deleted: ${{ steps.sync.outputs.deleted }}"
+```
+
+### Advanced link options
+
+Example using various Short.io link features:
+
+```yaml
+domain: "short.example.com"
+
+links:
+  # Campaign link with UTM tracking
+  summer-sale:
+    url: "https://shop.example.com/sale"
+    title: "Summer Sale 2024"
+    tags: [marketing, campaign]
+    utmSource: "shortlink"
+    utmMedium: "social"
+    utmCampaign: "summer2024"
+
+  # Time-limited promotional link
+  flash-deal:
+    url: "https://shop.example.com/flash"
+    expiresAt: "2024-12-31T23:59:59Z"
+    expiredURL: "https://shop.example.com/deals-ended"
+    clicksLimit: 1000
+
+  # Password-protected internal link
+  internal-docs:
+    url: "https://internal.example.com/docs"
+    password: "secret123"
+    cloaking: true
+
+  # Mobile-optimized link with app deep links
+  download:
+    url: "https://example.com/download"
+    androidURL: "https://play.google.com/store/apps/details?id=com.example"
+    iphoneURL: "https://apps.apple.com/app/example/id123456"
+
+  # A/B test link
+  landing:
+    url: "https://example.com/landing-a"
+    splitURL: "https://example.com/landing-b"
+    splitPercent: 50
 ```
 
 ## Sync Behavior

@@ -79,6 +79,29 @@ export class ShortioClient {
             domainId,
             title: link.title,
             tags: link.tags,
+            cloaking: link.cloaking,
+            redirectType: link.redirectType ? Number(link.redirectType) as 301 | 302 | 307 | 308 : undefined,
+            expiresAt: link.expiresAt,
+            expiredURL: link.expiredURL,
+            password: link.password,
+            passwordContact: link.passwordContact,
+            utmSource: link.utmSource,
+            utmMedium: link.utmMedium,
+            utmCampaign: link.utmCampaign,
+            utmTerm: link.utmTerm,
+            utmContent: link.utmContent,
+            androidURL: link.androidURL,
+            iphoneURL: link.iphoneURL,
+            clicksLimit: link.clicksLimit,
+            splitURL: link.splitURL,
+            splitPercent: link.splitPercent,
+            integrationGA: link.integrationGA,
+            integrationFB: link.integrationFB,
+            integrationAdroll: link.integrationAdroll,
+            integrationGTM: link.integrationGTM,
+            folderId: link.FolderId,
+            archived: link.archived,
+            skipQS: link.skipQS,
           });
         }
       }
@@ -90,13 +113,11 @@ export class ShortioClient {
   }
 
   async createLink(params: ShortioCreateLink): Promise<ShortioLink> {
+    const { folderId, ...rest } = params;
     const result = await postLinks({
       body: {
-        originalURL: params.originalURL,
-        domain: params.domain,
-        path: params.path,
-        title: params.title,
-        tags: params.tags,
+        ...rest,
+        ...(folderId ? { FolderId: folderId } : {}),
       },
     });
 
@@ -118,12 +139,12 @@ export class ShortioClient {
   }
 
   async updateLink(linkId: string, params: ShortioUpdateLink): Promise<ShortioLink> {
+    const { folderId, ...rest } = params;
     const result = await postLinksByLinkId({
       path: { linkId },
       body: {
-        originalURL: params.originalURL,
-        title: params.title,
-        tags: params.tags,
+        ...rest,
+        ...(folderId ? { FolderId: folderId } : {}),
       },
     });
 
